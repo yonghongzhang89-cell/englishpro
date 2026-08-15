@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>ENGLISH PRO V11.8 - 修复完善版</title>
+    <style>
+        :root { --p: #00d2ff; --bg: #000; --panel: #1a1d23; --text: #e0e0e0; --brd: #333; --grn: #00c853; --ylw: #ffd600; --red: #ff4757; }
+        html, body { height: 100%; margin: 0; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); }
+        
+        #app { display: flex; height: 100vh; flex-direction: column; }
+        header { height: 50px; padding: 0 12px; background: #14171c; border-bottom: 1px solid var(--brd); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; z-index: 10; }
+        .f-btn { border: 1px solid #444; padding: 5px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; background: #252830; color: #ccc; margin-left: 4px; white-space: nowrap; }
+        
+        main { flex: 1; display: flex; overflow: hidden; transition: flex-direction 0.3s ease; }
+        #video-section { flex: 6; min-width: 300px; display: flex; flex-direction: column; background: #000; border-right: 1px solid var(--brd); overflow: hidden; }
+        .video-container { flex: 1; position: relative; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        video { max-width: 100%; max-height: 100%; object-fit: contain; outline: none; }
+
+        #pc { height: 6px; background: #222; cursor: pointer; position: relative; flex-shrink: 0; }
+        #pb { height: 100%; background: var(--p); width: 0%; position: absolute; pointer-events: none; }
+
+        #bar { padding: 8px; background: #14171c; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; flex-shrink: 0; }
+        .btn { padding: 10px 1px; border-radius: 4px; cursor: pointer; background: #2c313a; color: #fff; border: 1px solid #444; font-size: 12px; font-weight: bold; text-align: center; border: none; }
+        .btn-active { background: var(--p) !important; color: #000 !important; }
+
+        .spd-box { display: flex; background: #2c313a; border-radius: 4px; overflow: hidden; border: 1px solid #444; }
+        .spd-sub { flex: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; font-weight: bold; }
+        .spd-val { flex: 2; border-left: 1px solid #444; border-right: 1px solid #444; font-size: 11px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+
+        #right { flex: 4; display: flex; flex-direction: column; background: var(--panel); overflow: hidden; }
+        #subs { flex: 1; overflow-y: auto; padding: 10px; scroll-behavior: smooth; }
+        .line { padding: 12px; margin-bottom: 10px; border-radius: 8px; background: #21252b; border: 1px solid transparent; cursor: pointer; }
+        .active { background: #2c313a !important; border-color: var(--p) !important; }
+        .txt { font-size: 1.05rem; line-height: 1.5; color: #fff; pointer-events: none; }
+        .w { cursor: pointer; border-bottom: 1px dotted #555; pointer-events: auto; display: inline-block; }
+        
+        main.v-mode { flex-direction: column !important; }
+        main.v-mode #video-section { flex: none !important; height: 42vh; border-right: none; border-bottom: 1px solid var(--brd); }
+
+        #word-pop { display: none; position: fixed; z-index: 9999; background: #2c313a; width: 85%; max-width: 320px; border-radius: 12px; padding: 20px; border: 2px solid #555; left: 50% !important; top: 50% !important; transform: translate(-50%, -50%); box-shadow: 0 10px 40px rgba(0,0,0,0.8); }
+        .save-btn { margin-top: 15px; width: 100%; padding: 10px; background: var(--p); color: #000; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+
+        #vocab-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 10000; flex-direction: column; }
+        .v-header { height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; border-bottom: 1px solid #333; }
+        .v-list { flex: 1; overflow-y: auto; padding: 15px; }
+        .v-item { background: #222; padding: 15px; margin-bottom: 10px; border-radius: 8px; border-left: 4px solid var(--p); display: flex; justify-content: space-between; align-items: center; }
+        .del-v { color: var(--red); font-size: 14px; cursor: pointer; padding: 5px; }
+
+        #toast { position: fixed; top: 65px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color:#fff; padding: 8px 20px; border-radius: 20px; display: none; z-index: 1001; font-size: 13px; font-weight: bold; border: 1px solid #444; }
+
+        @media screen and (max-width: 768px) {
+            main { flex-direction: column; }
+            #video-section { flex: none !important; height: 38vh; }
+            #bar { padding: 10px; gap: 8px; }
+            .btn { padding: 12px 2px; font-size: 13px; }
+        }
+    </style>
+</head>
+<body ondragover="event.preventDefault()" ondrop="handleGlobalDrop(event)">
+    <div id="app">
+        <header>
+            <h2 style="color:var(--p); margin:0; font-size: 16px;">V11.8 PRO</h2>
+            <div style="display: flex; align-items: center;">
+                <div class="f-btn" style="color:var(--ylw); border-color:var(--ylw)" onclick="openVocab()">📖生词本</div>
+                <label class="f-btn" id="l-v">🎬视频<input type="file" id="vf" hidden accept="video/*"></label>
+                <label class="f-btn" id="l-s">📝字幕<input type="file" id="sf" hidden accept=".srt,.vtt,.ass,.ssa"></label>
+                <div class="f-btn" style="color:var(--p)" onclick="toggleLayout()">📐布局</div>
+                <div class="f-btn" style="color:var(--red)" onclick="location.reload()">🗑️清空</div>
+            </div>
+        </header>
+        <main id="m">
+            <div id="video-section">
+                <div class="video-container"><video id="v" playsinline></video></div>
+                <div id="pc" onclick="seek(event)"><div id="pb"></div></div>
+                <div id="bar">
+                    <button class="btn" onclick="v.paused?v.play():v.pause()">⏯ 播放</button>
+                    <button class="btn" id="loopBtn">🔄 单句</button>
+                    <button class="btn" style="color:var(--ylw)" onclick="setA()">🚩 A点</button>
+                    <button class="btn" style="color:var(--ylw)" onclick="setB()">🏁 B点</button>
+                    <button class="btn" style="color:var(--red)" onclick="resetAB()">重置</button>
+                    <div class="spd-box">
+                        <div class="spd-sub" onclick="adjSpd(-0.1)">-</div>
+                        <div class="spd-val" onclick="v.playbackRate=1.0;updateSpdUI()" id="spdText">1.0x</div>
+                        <div class="spd-sub" onclick="adjSpd(0.1)">+</div>
+                    </div>
+                    <button class="btn" onclick="v.currentTime-=0.1">-0.1s</button>
+                    <button class="btn" onclick="v.currentTime+=0.1">+0.1s</button>
+                </div>
+            </div>
+            <div id="right"><div id="subs"></div></div>
+        </main>
+    </div>
+
+    <div id="word-pop">
+        <div id="p-head"><span id="p-word" style="font-size:22px;color:var(--p);font-weight:bold;"></span><span id="p-phonetic" style="color:var(--ylw); font-size:15px; margin-left:8px;"></span></div>
+        <div id="p-ex-box" style="margin-top:10px; font-weight:bold; color:#fff; line-height:1.4;">Searching...</div>
+        <button class="save-btn" onclick="saveWord()">⭐ 记入生词本</button>
+    </div>
+
+    <div id="vocab-modal">
+        <div class="v-header">
+            <h3 style="margin:0; color:var(--p)">我的生词本</h3>
+            <div style="display:flex; gap:15px; align-items:center;">
+                <span style="color:#888; font-size:13px; cursor:pointer;" onclick="clearVocab()">清空全部</span>
+                <span style="color:#fff; cursor:pointer; font-size:28px;" onclick="closeVocab()">×</span>
+            </div>
+        </div>
+        <div class="v-list" id="vList"></div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script>
+        const v = document.getElementById('v'), subA = document.getElementById('subs'), m = document.getElementById('m');
+        const pb = document.getElementById('pb'), pc = document.getElementById('pc'), spdTxt = document.getElementById('spdText');
+        let subs = [], curIdx = -1, pointA = -1, pointB = -1, isSingleLoop = false;
+        let lastWord = { w: "", p: "", t: "" };
+
+        function toggleLayout() { m.classList.toggle('v-mode'); toast("布局模式已切换"); }
+        function seek(e) { if(v.duration) v.currentTime = (e.offsetX / pc.offsetWidth) * v.duration; }
+
+        function adjSpd(delta) {
+            let s = (parseFloat(v.playbackRate) + delta).toFixed(1);
+            if(s < 0.5) s = 0.5; if(s > 3.0) s = 3.0;
+            v.playbackRate = s; updateSpdUI();
+        }
+        function updateSpdUI() { spdTxt.innerText = parseFloat(v.playbackRate).toFixed(1) + 'x'; }
+
+        function getVocab() { return JSON.parse(localStorage.getItem('myVocab') || '[]'); }
+        function saveWord() {
+            let list = getVocab();
+            if(list.some(item => item.w === lastWord.w)) { toast("生词本已存在该词"); return; }
+            list.unshift({...lastWord});
+            localStorage.setItem('myVocab', JSON.stringify(list));
+            document.getElementById('word-pop').style.display='none';
+            toast("⭐ 已记入生词本");
+        }
+        function openVocab() {
+            const list = getVocab();
+            const box = document.getElementById('vList');
+            document.getElementById('vocab-modal').style.display = 'flex';
+            if(list.length === 0) { box.innerHTML = '<div style="color:#666;text-align:center;margin-top:50px;">生词本是空的</div>'; return; }
+            box.innerHTML = list.map((item, idx) => `
+                <div class="v-item">
+                    <div style="flex:1;">
+                        <b style="color:var(--p);font-size:18px;">${item.w} <small style="color:var(--ylw);margin-left:5px;">${item.p}</small></b><br>
+                        <span style="color:#bbb;font-size:15px;margin-top:5px;display:inline-block;">${item.t}</span>
+                    </div>
+                    <span class="del-v" onclick="delWord(${idx})">删除</span>
+                </div>
+            `).join('');
+        }
+        function delWord(idx) {
+            let list = getVocab(); list.splice(idx, 1);
+            localStorage.setItem('myVocab', JSON.stringify(list));
+            openVocab();
+        }
+        function clearVocab() { if(confirm("清空生词本？")) { localStorage.removeItem('myVocab'); openVocab(); } }
+        function closeVocab() { document.getElementById('vocab-modal').style.display = 'none'; }
+
+        async function fetchPhonetic(w) {
+            const clean = w.toLowerCase().replace(/[^a-z]/g, '');
+            try { const r = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${clean}`); const d = await r.json(); return d[0]?.phonetic || ""; } catch { return ""; }
+        }
+
+        const word = async (e, w) => { 
+            e.stopPropagation(); const pop = document.getElementById('word-pop');
+            pop.style.display = 'block';
+            document.getElementById('p-word').innerText = w;
+            document.getElementById('p-ex-box').innerText = '正在翻译...';
+            document.getElementById('p-phonetic').innerText = "";
+            
+            fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=zh-CN&dt=t&q=${encodeURIComponent(w)}`)
+                .then(r => r.json()).then(async data => { 
+                    const trans = data[0][0][0];
+                    const ph = await fetchPhonetic(w);
+                    document.getElementById('p-ex-box').innerText = trans;
+                    document.getElementById('p-phonetic').innerText = ph;
+                    lastWord = { w: w, p: ph, t: trans };
+                });
+        };
+
+        function handleGlobalDrop(e) { e.preventDefault(); const fs = e.dataTransfer.files; for(let f of fs) { if(f.type.startsWith('video/')) loadVideo(f); else if(f.name.match(/\.(srt|vtt|ass|ssa)$/i)) loadSubtitle(f); } }
+        function loadVideo(f) { v.src = URL.createObjectURL(f); document.getElementById('l-v').style.color= "var(--grn)"; toast("视频载入成功"); }
+        function loadSubtitle(f) {
+            const r = new FileReader(); r.onload = ev => {
+                subs = parseContent(new TextDecoder('utf-8').decode(ev.target.result));
+                if(subs.length) { render(); document.getElementById('l-s').style.color= "var(--grn)"; toast("字幕载入成功"); }
+            }; r.readAsArrayBuffer(f);
+        }
+        const parseContent = (t) => {
+            const res = []; let id = 0;
+            t.trim().split(/\n\s*\n/).forEach(b => {
+                const l = b.split('\n'), ti = l.find(x => x.includes('-->'));
+                if (ti) {
+                    const ts = ti.split('-->'), toS = s => { const p = s.trim().replace(',','.').split(':'); return p.length===3 ? p[0]*3600+p[1]*60+parseFloat(p[2]) : 0; };
+                    res.push({ start: toS(ts[0]), end: toS(ts[1]), text: l.slice(l.indexOf(ti)+1).join(' ').replace(/<[^>]+>/g,''), idx: id++ });
+                }
+            });
+            return res;
+        };
+
+        v.ontimeupdate = () => {
+            if (v.duration) pb.style.width = (v.currentTime / v.duration) * 100 + '%';
+            
+            // A-B 循环优先级最高
+            if (pointA !== -1 && pointB !== -1 && v.currentTime >= pointB) {
+                v.currentTime = pointA;
+                return;
+            }
+            
+            const i = subs.findIndex(s => v.currentTime >= s.start && v.currentTime < s.end);
+            
+            if (i !== -1) {
+                // 修复点：单句循环逻辑，实时监测当前句子的结束点
+                if (isSingleLoop && v.currentTime >= subs[i].end - 0.15) {
+                    v.currentTime = subs[i].start;
+                    return;
+                }
+
+                if (i !== curIdx) {
+                    curIdx = i;
+                    document.querySelector('.active')?.classList.remove('active');
+                    const el = document.querySelector(`[data-i="${i}"]`);
+                    if(el) {
+                        el.classList.add('active');
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }
+            }
+        };
+
+        const render = () => {
+            subA.innerHTML = subs.map(s => `
+                <div class="line" data-i="${s.idx}" onclick="v.currentTime=${s.start};v.play();">
+                    <div class="txt">${s.text.split(/([a-zA-Z']+)/g).map(p => p.match(/[a-zA-Z]/) ? `<span class="w" onclick="word(event,'${p}')">${p}</span>` : p).join('')}</div>
+                </div>
+            `).join('');
+        };
+
+        document.getElementById('loopBtn').onclick = function() { 
+            isSingleLoop = !isSingleLoop; 
+            this.classList.toggle('btn-active', isSingleLoop); 
+            toast(isSingleLoop ? "单句循环：开启" : "单句循环：关闭"); 
+        };
+        
+        function setA() { pointA = v.currentTime; toast("A点已设定"); }
+        function setB() { pointB = v.currentTime; v.currentTime = pointA; toast("AB循环开始"); }
+        function resetAB() { pointA = -1; pointB = -1; toast("循环已清空"); }
+        const toast = m => { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; setTimeout(()=>t.style.display='none',1800); };
+        window.addEventListener('pointerdown', (e) => { const pop = document.getElementById('word-pop'); if (pop.style.display === 'block' && !pop.contains(e.target)) pop.style.display = 'none'; });
+        document.getElementById('vf').onchange = e => { if(e.target.files[0]) loadVideo(e.target.files[0]); };
+        document.getElementById('sf').onchange = e => { if(e.target.files[0]) loadSubtitle(e.target.files[0]); };
+        window.onkeydown = e => { if(e.code==='Space') { e.preventDefault(); v.paused?v.play():v.pause(); } };
+    </script>
+</body>
+</html>
