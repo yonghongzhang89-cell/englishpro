@@ -3,93 +3,90 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>ENGLISH PRO V12.2 - 完美布局版</title>
+    
+    <!-- 苹果全屏 App 核心指令 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="English Pro">
+    
+    <title>ENGLISH PRO V14.5 - 自动旋转版</title>
     <style>
         :root { --p: #00d2ff; --bg: #000; --panel: #1a1d23; --text: #e0e0e0; --brd: #333; --grn: #00c853; --ylw: #ffd600; --red: #ff4757; }
         html, body { height: 100%; margin: 0; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); }
         
-        #app { display: flex; height: 100vh; flex-direction: column; }
+        #app { display: flex; height: 100vh; flex-direction: column; padding-top: env(safe-area-inset-top); }
+        
+        /* 顶部标题栏 */
         header { 
-            height: 50px; padding: 0 12px; background: #14171c; border-bottom: 1px solid var(--brd); 
-            display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; z-index: 10; 
+            height: 48px; padding: 0 12px; background: #14171c; border-bottom: 1px solid var(--brd); 
+            display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; z-index: 100;
+            transition: transform 0.3s ease, opacity 0.3s ease;
         }
         .f-btn { border: 1px solid #444; padding: 5px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; background: #252830; color: #ccc; margin-left: 4px; white-space: nowrap; }
+
+        /* 主体布局：默认竖向（移动端优先） */
+        main { flex: 1; display: flex; overflow: hidden; flex-direction: column; transition: all 0.3s ease; }
         
-        /* 默认横排布局 */
-        main { flex: 1; display: flex; overflow: hidden; flex-direction: row; transition: all 0.3s ease; }
-        
-        #video-section { 
-            flex: 6; display: flex; flex-direction: column; background: #000; 
-            border-right: 1px solid var(--brd); overflow: hidden; 
-        }
-        
-        .video-container { flex: 1; position: relative; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        #video-section { display: flex; flex-direction: column; background: #000; overflow: hidden; flex: none; height: 42vh; transition: all 0.3s ease; }
+        .video-container { flex: 1; position: relative; background: #000; display: flex; align-items: center; justify-content: center; min-height: 0; }
         video { max-width: 100%; max-height: 100%; object-fit: contain; outline: none; }
 
         #pc { height: 6px; background: #222; cursor: pointer; position: relative; flex-shrink: 0; }
         #pb { height: 100%; background: var(--p); width: 0%; position: absolute; pointer-events: none; }
 
-        /* 按钮栏优化：增加自动换行支持，防止飞出去 */
+        /* 功能键区：弹性网格 */
         #bar { 
-            padding: 8px; background: #14171c; display: grid; 
-            grid-template-columns: repeat(4, 1fr); gap: 6px; flex-shrink: 0; 
+            padding: 8px; background: #14171c; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; 
+            flex-shrink: 0; align-content: center;
         }
-        .btn { padding: 10px 1px; border-radius: 4px; cursor: pointer; background: #2c313a; color: #fff; font-size: 12px; font-weight: bold; text-align: center; border: none; }
+        .btn { padding: 12px 1px; border-radius: 4px; cursor: pointer; background: #2c313a; color: #fff; font-size: 13px; font-weight: bold; text-align: center; border: none; -webkit-tap-highlight-color: transparent; }
         .btn-active { background: var(--p) !important; color: #000 !important; }
 
-        .spd-box { display: flex; background: #2c313a; border-radius: 4px; overflow: hidden; border: 1px solid #444; }
-        .spd-sub { flex: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; font-weight: bold; }
-        .spd-val { flex: 2; border-left: 1px solid #444; border-right: 1px solid #444; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
-
-        #right { flex: 4; display: flex; flex-direction: column; background: var(--panel); overflow: hidden; }
-        #subs { flex: 1; overflow-y: auto; padding: 10px; scroll-behavior: smooth; }
+        #right { flex: 1; display: flex; flex-direction: column; background: var(--panel); overflow: hidden; border-top: 1px solid var(--brd); }
+        #subs { flex: 1; overflow-y: auto; padding: 12px; scroll-behavior: smooth; }
         .line { padding: 12px; margin-bottom: 10px; border-radius: 8px; background: #21252b; border: 1px solid transparent; cursor: pointer; }
         .active { background: #2c313a !important; border-color: var(--p) !important; }
         .txt { font-size: 1.05rem; line-height: 1.5; color: #fff; pointer-events: none; }
-        .w { cursor: pointer; border-bottom: 1px dotted #555; pointer-events: auto; display: inline-block; }
+        .w { cursor: pointer; border-bottom: 1px dotted #555; pointer-events: auto; }
         
-        /* --- 竖排模式样式修复 --- */
-        main.v-mode { flex-direction: column !important; }
-        main.v-mode #video-section { 
-            flex: none !important; 
-            height: 45vh !important; /* 调整为更合适的高度 */
-            border-right: none; 
-            border-bottom: 1px solid var(--brd); 
-        }
-        main.v-mode #right { flex: 1 !important; }
-        
-        /* 小屏幕下缩小标题 */
-        @media screen and (max-width: 480px) {
-            header h2 { font-size: 14px !important; }
-            .btn { font-size: 11px; padding: 12px 1px; }
-            #bar { gap: 4px; padding: 6px; }
+        /* --- 电脑端 & 手机横屏自动切换并排 --- */
+        @media screen and (min-width: 900px), (orientation: landscape) {
+            main:not(.force-column) { flex-direction: row; }
+            main:not(.force-column) #video-section { flex: 6; height: 100%; border-right: 1px solid var(--brd); border-bottom: none; }
+            main:not(.force-column) #right { flex: 4; border-top: none; }
+            main:not(.force-column) video { max-height: 65vh; }
         }
 
-        #word-pop { display: none; position: fixed; z-index: 9999; background: #2c313a; width: 85%; max-width: 320px; border-radius: 12px; padding: 20px; border: 2px solid #555; left: 50% !important; top: 50% !important; transform: translate(-50%, -50%); box-shadow: 0 10px 40px rgba(0,0,0,0.8); }
-        .save-btn { margin-top: 15px; width: 100%; padding: 10px; background: var(--p); color: #000; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;}
+        /* --- 手机横屏深度适配 --- */
+        @media screen and (orientation: landscape) and (max-height: 500px) {
+            header { height: 0; opacity: 0; pointer-events: none; overflow: hidden; } /* 横屏自动隐藏标题栏 */
+            #bar { padding: 4px; gap: 4px; }
+            .btn { padding: 8px 0; font-size: 11px; }
+        }
 
-        #vocab-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 10000; flex-direction: column; }
-        .v-header { height: 60px; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; border-bottom: 1px solid #333; }
-        .v-list { flex: 1; overflow-y: auto; padding: 15px; }
-        .v-item { background: #222; padding: 15px; margin-bottom: 10px; border-radius: 8px; border-left: 4px solid var(--p); display: flex; justify-content: space-between; align-items: center; }
-        #toast { position: fixed; top: 65px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color:#fff; padding: 8px 20px; border-radius: 20px; display: none; z-index: 1001; font-size: 13px; border: 1px solid #444; }
+        /* 手动强制竖排模式 */
+        .force-column { flex-direction: column !important; }
+        .force-column #video-section { flex: none !important; height: 45vh !important; border-right: none !important; border-bottom: 1px solid var(--brd) !important; }
+        .force-column #right { flex: 1 !important; border-top: 1px solid var(--brd) !important; }
+
+        #word-pop { display: none; position: fixed; z-index: 9999; background: #2c313a; width: 85%; max-width: 300px; border-radius: 12px; padding: 15px; border: 2px solid #555; left: 50% !important; top: 50% !important; transform: translate(-50%, -50%); box-shadow: 0 10px 40px rgba(0,0,0,0.8); }
+        #toast { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.9); color:#fff; padding: 6px 15px; border-radius: 20px; display: none; z-index: 1001; font-size: 12px; border: 1px solid var(--p); }
     </style>
 </head>
 <body ondragover="event.preventDefault()" ondrop="handleGlobalDrop(event)">
     <div id="app">
-        <header>
-            <h2 style="color:var(--p); margin:0; font-size: 16px;">V12.2 PRO</h2>
+        <header id="h">
+            <h2 style="color:var(--p); margin:0; font-size: 16px;">V14.5 PRO</h2>
             <div style="display: flex; align-items: center;">
-                <div class="f-btn" style="color:var(--ylw); border-color:var(--ylw)" onclick="openVocab()">📖生词本</div>
                 <label class="f-btn" id="l-v">🎬视频<input type="file" id="vf" hidden accept="video/*"></label>
                 <label class="f-btn" id="l-s">📝字幕<input type="file" id="sf" hidden accept=".srt,.vtt,.ass,.ssa"></label>
-                <div class="f-btn" id="layoutBtn" style="color:var(--p); border-color:var(--p)" onclick="toggleLayout()">📐切换布局</div>
+                <div class="f-btn" id="layoutBtn" style="color:var(--p); border-color:var(--p)" onclick="toggleLayout()">📐布局</div>
                 <div class="f-btn" style="color:var(--red)" onclick="location.reload()">🗑️清空</div>
             </div>
         </header>
         <main id="m">
             <div id="video-section">
-                <div class="video-container"><video id="v" playsinline></video></div>
+                <div class="video-container"><video id="v" playsinline webkit-playsinline></video></div>
                 <div id="pc" onclick="seek(event)"><div id="pb"></div></div>
                 <div id="bar">
                     <button class="btn" onclick="v.paused?v.play():v.pause()">⏯ 播放</button>
@@ -97,11 +94,7 @@
                     <button class="btn" style="color:var(--ylw)" onclick="setA()">🚩 A点</button>
                     <button class="btn" style="color:var(--ylw)" onclick="setB()">🏁 B点</button>
                     <button class="btn" style="color:var(--red)" onclick="resetAB()">重置</button>
-                    <div class="spd-box">
-                        <div class="spd-sub" onclick="adjSpd(-0.1)">-</div>
-                        <div class="spd-val" onclick="v.playbackRate=1.0;updateSpdUI()" id="spdText">1.0x</div>
-                        <div class="spd-sub" onclick="adjSpd(0.1)">+</div>
-                    </div>
+                    <div class="btn" id="spdText" onclick="changeSpd()">1.0x</div>
                     <button class="btn" onclick="v.currentTime-=0.1">-0.1s</button>
                     <button class="btn" onclick="v.currentTime+=0.1">+0.1s</button>
                 </div>
@@ -110,123 +103,42 @@
         </main>
     </div>
 
-    <div id="word-pop">
-        <div id="p-head"><span id="p-word" style="font-size:22px;color:var(--p);font-weight:bold;"></span><span id="p-phonetic" style="color:var(--ylw); font-size:15px; margin-left:8px;"></span></div>
+    <div id="word-pop" onclick="this.style.display='none'">
+        <div id="p-head"><span id="p-word" style="font-size:20px;color:var(--p);font-weight:bold;"></span><span id="p-phonetic" style="color:var(--ylw); font-size:14px; margin-left:8px;"></span></div>
         <div id="p-ex-box" style="margin-top:10px; font-weight:bold; color:#fff; line-height:1.4;">Searching...</div>
-        <button class="save-btn" onclick="saveWord()">⭐ 记入生词本</button>
     </div>
-
-    <div id="vocab-modal">
-        <div class="v-header">
-            <h3 style="margin:0; color:var(--p)">我的生词本</h3>
-            <div style="display:flex; gap:15px; align-items:center;">
-                <span style="color:#888; font-size:13px; cursor:pointer;" onclick="clearVocab()">清空全部</span>
-                <span style="color:#fff; cursor:pointer; font-size:28px;" onclick="closeVocab()">×</span>
-            </div>
-        </div>
-        <div class="v-list" id="vList"></div>
-    </div>
-
     <div id="toast"></div>
 
     <script>
         const v = document.getElementById('v'), subA = document.getElementById('subs'), m = document.getElementById('m');
-        const pb = document.getElementById('pb'), pc = document.getElementById('pc'), spdTxt = document.getElementById('spdText');
+        const pb = document.getElementById('pb'), pc = document.getElementById('pc');
         let subs = [], curIdx = -1, pointA = -1, pointB = -1, isSingleLoop = false;
-        let lastWord = { w: "", p: "", t: "" };
 
-        // 布局初始化逻辑
-        function initLayout() {
-            const savedMode = localStorage.getItem('layoutMode');
-            // 如果没存过，手机自动设为竖排，电脑设为横排
-            if (!savedMode) {
-                if (window.innerWidth < 768) {
-                    m.classList.add('v-mode');
-                }
-            } else if (savedMode === 'vertical') {
-                m.classList.add('v-mode');
-            }
-            updateLayoutBtnText();
-        }
-        
+        // 手动切换逻辑
         function toggleLayout() {
-            m.classList.toggle('v-mode');
-            const isVertical = m.classList.contains('v-mode');
-            localStorage.setItem('layoutMode', isVertical ? 'vertical' : 'horizontal');
-            updateLayoutBtnText();
-            toast(isVertical ? "已切换至竖排" : "已切换至并排");
+            m.classList.toggle('force-column');
+            const isCol = m.classList.contains('force-column');
+            toast(isCol ? "模式：已锁定竖排模式" : "模式：自动感应布局");
         }
 
-        function updateLayoutBtnText() {
-            const isVertical = m.classList.contains('v-mode');
-            document.getElementById('layoutBtn').innerText = isVertical ? "📐并排模式" : "📐竖排模式";
-        }
-
-        initLayout();
-
-        function seek(e) { if(v.duration) v.currentTime = (e.offsetX / pc.offsetWidth) * v.duration; }
-        function adjSpd(delta) {
-            let s = (parseFloat(v.playbackRate) + delta).toFixed(1);
-            if(s < 0.5) s = 0.5; if(s > 3.0) s = 3.0;
-            v.playbackRate = s; updateSpdUI();
-        }
-        function updateSpdUI() { spdTxt.innerText = parseFloat(v.playbackRate).toFixed(1) + 'x'; }
-
-        function getVocab() { return JSON.parse(localStorage.getItem('myVocab') || '[]'); }
-        function saveWord() {
-            let list = getVocab();
-            if(list.some(item => item.w === lastWord.w)) { toast("生词本已存在"); return; }
-            list.unshift({...lastWord});
-            localStorage.setItem('myVocab', JSON.stringify(list));
-            document.getElementById('word-pop').style.display='none';
-            toast("⭐ 已记入生词本");
-        }
-        function openVocab() {
-            const list = getVocab();
-            const box = document.getElementById('vList');
-            document.getElementById('vocab-modal').style.display = 'flex';
-            if(list.length === 0) { box.innerHTML = '<div style="color:#666;text-align:center;margin-top:50px;">生词本是空的</div>'; return; }
-            box.innerHTML = list.map((item, idx) => `
-                <div class="v-item">
-                    <div style="flex:1;">
-                        <b style="color:var(--p);font-size:18px;">${item.w} <small style="color:var(--ylw);">${item.p}</small></b><br>
-                        <span style="color:#bbb;">${item.t}</span>
-                    </div>
-                    <span style="color:var(--red);padding:10px;cursor:pointer;" onclick="delWord(${idx})">删除</span>
-                </div>
-            `).join('');
-        }
-        function delWord(idx) {
-            let list = getVocab(); list.splice(idx, 1);
-            localStorage.setItem('myVocab', JSON.stringify(list));
-            openVocab();
-        }
-        function clearVocab() { if(confirm("清空？")) { localStorage.removeItem('myVocab'); openVocab(); } }
-        function closeVocab() { document.getElementById('vocab-modal').style.display = 'none'; }
-
+        // 查词逻辑
         async function fetchPhonetic(w) {
             const clean = w.toLowerCase().replace(/[^a-z]/g, '');
             try { const r = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${clean}`); const d = await r.json(); return d[0]?.phonetic || ""; } catch { return ""; }
         }
-
         const word = async (e, w) => { 
             e.stopPropagation(); const pop = document.getElementById('word-pop');
             pop.style.display = 'block';
             document.getElementById('p-word').innerText = w;
-            document.getElementById('p-ex-box').innerText = '正在查询...';
-            document.getElementById('p-phonetic').innerText = "";
-            
+            document.getElementById('p-ex-box').innerText = '正在翻译...';
             fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=zh-CN&dt=t&q=${encodeURIComponent(w)}`)
                 .then(r => r.json()).then(async data => { 
-                    const trans = data[0][0][0];
-                    const ph = await fetchPhonetic(w);
-                    document.getElementById('p-ex-box').innerText = trans;
-                    document.getElementById('p-phonetic').innerText = ph;
-                    lastWord = { w: w, p: ph, t: trans };
+                    document.getElementById('p-ex-box').innerText = data[0][0][0];
+                    document.getElementById('p-phonetic').innerText = await fetchPhonetic(w);
                 });
         };
 
-        function handleGlobalDrop(e) { e.preventDefault(); const fs = e.dataTransfer.files; for(let f of fs) { if(f.type.startsWith('video/')) loadVideo(f); else if(f.name.match(/\.(srt|vtt|ass|ssa)$/i)) loadSubtitle(f); } }
+        // 文件处理
         function loadVideo(f) { v.src = URL.createObjectURL(f); document.getElementById('l-v').style.color= "var(--grn)"; toast("视频载入成功"); }
         function loadSubtitle(f) {
             const r = new FileReader(); r.onload = ev => {
@@ -246,12 +158,13 @@
             return res;
         };
 
+        // 核心同步与循环逻辑
         v.ontimeupdate = () => {
             if (v.duration) pb.style.width = (v.currentTime / v.duration) * 100 + '%';
             if (pointA !== -1 && pointB !== -1 && v.currentTime >= pointB) { v.currentTime = pointA; return; }
             const i = subs.findIndex(s => v.currentTime >= s.start && v.currentTime < s.end);
             if (i !== -1) {
-                if (isSingleLoop && v.currentTime >= subs[i].end - 0.15) { v.currentTime = subs[i].start; return; }
+                if (isSingleLoop && v.currentTime >= subs[i].end - 0.1) { v.currentTime = subs[i].start; return; }
                 if (i !== curIdx) {
                     curIdx = i; document.querySelector('.active')?.classList.remove('active');
                     const el = document.querySelector(`[data-i="${i}"]`);
@@ -270,18 +183,14 @@
         document.getElementById('loopBtn').onclick = function() { isSingleLoop = !isSingleLoop; this.classList.toggle('btn-active', isSingleLoop); toast(isSingleLoop ? "单句开启" : "单句关闭"); };
         function setA() { pointA = v.currentTime; toast("A点已设"); }
         function setB() { pointB = v.currentTime; v.currentTime = pointA; toast("循环开始"); }
-        function resetAB() { pointA = -1; pointB = -1; toast("已清空"); }
-        const toast = m => { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; setTimeout(()=>t.style.display='none',1800); };
-        
-        // 点击空白处关闭弹窗
-        window.addEventListener('pointerdown', (e) => { 
-            const pop = document.getElementById('word-pop'); 
-            if (pop.style.display === 'block' && !pop.contains(e.target)) pop.style.display = 'none'; 
-        });
-
+        function resetAB() { pointA = -1; pointB = -1; toast("已重置"); }
+        function changeSpd() { v.playbackRate = v.playbackRate >= 2 ? 0.5 : v.playbackRate + 0.25; document.getElementById('spdText').innerText = v.playbackRate.toFixed(1) + 'x'; }
+        function seek(e) { if(v.duration) v.currentTime = (e.offsetX / pc.offsetWidth) * v.duration; }
+        const toast = m => { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; setTimeout(()=>t.style.display='none',1500); };
+        window.addEventListener('pointerdown', (e) => { const pop = document.getElementById('word-pop'); if (pop.style.display === 'block' && !pop.contains(e.target)) pop.style.display = 'none'; });
         document.getElementById('vf').onchange = e => { if(e.target.files[0]) loadVideo(e.target.files[0]); };
         document.getElementById('sf').onchange = e => { if(e.target.files[0]) loadSubtitle(e.target.files[0]); };
-        window.onkeydown = e => { if(e.code==='Space') { e.preventDefault(); v.paused?v.play():v.pause(); } };
+        function handleGlobalDrop(e) { e.preventDefault(); const fs = e.dataTransfer.files; for(let f of fs) { if(f.type.startsWith('video/')) loadVideo(f); else if(f.name.match(/\.(srt|vtt|ass|ssa)$/i)) loadSubtitle(f); } }
     </script>
 </body>
 </html>
