@@ -8,7 +8,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="English Pro">
     
-    <title>ENGLISH PRO V16.4 - 全能进化版</title>
+    <title>ENGLISH PRO V16.5 - 屏幕常亮版</title>
     <style>
         :root { --p: #00d2ff; --bg: #000; --panel: #1a1d23; --text: #e0e0e0; --brd: #333; --grn: #00c853; --ylw: #ffd600; --red: #ff4757; }
         html, body { height: 100%; margin: 0; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); }
@@ -65,7 +65,7 @@
 <body ondragover="event.preventDefault()" ondrop="handleGlobalDrop(event)">
     <div id="app">
         <header id="h">
-            <h2 style="color:var(--p); margin:0; font-size: 15px;">PRO V16.4</h2>
+            <h2 style="color:var(--p); margin:0; font-size: 15px;">PRO V16.5</h2>
             <div style="display: flex; align-items: center;">
                 <label class="f-btn" id="l-v">🎬视频<input type="file" id="vf" hidden accept="video/*"></label>
                 <label class="f-btn" id="l-s">📝字幕<input type="file" id="sf" hidden accept=".srt,.vtt,.ass,.ssa"></label>
@@ -120,6 +120,25 @@
         const playBtn = document.getElementById('playBtn'), fullLoopBtn = document.getElementById('fullLoopBtn');
         let subs = [], curIdx = -1, pointA = -1, pointB = -1, isSingleLoop = false, lockedIdx = -1;
 
+        // --- 【新增】屏幕唤醒锁逻辑 (防止手机自动锁屏) ---
+        let wakeLock = null;
+        async function requestWakeLock() {
+            if ('wakeLock' in navigator) {
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    console.log('Wake Lock is active');
+                } catch (err) {
+                    console.log(`${err.name}, ${err.message}`);
+                }
+            }
+        }
+        function releaseWakeLock() {
+            if (wakeLock !== null) {
+                wakeLock.release();
+                wakeLock = null;
+            }
+        }
+
         // --- 1. 播放与全视频循环控制 ---
         let audioCtx, gainNode, source;
         function initAudioContext() {
@@ -135,17 +154,22 @@
 
         function playPause() { 
             initAudioContext(); 
-            v.paused ? v.play() : v.pause(); 
+            if (v.paused) {
+                v.play();
+                requestWakeLock(); // 播放时申请锁
+            } else {
+                v.pause();
+                releaseWakeLock(); // 暂停时释放锁
+            }
         }
 
-        // 监听视频原生的播放/暂停事件来改变按钮状态 (这样点击视频画面也会同步按钮)
         v.onplay = () => { playBtn.innerText = "⏸ 暂停"; playBtn.classList.add('btn-active'); };
         v.onpause = () => { playBtn.innerText = "▶ 播放"; playBtn.classList.remove('btn-active'); };
 
         function toggleFullLoop() {
             v.loop = !v.loop;
             fullLoopBtn.classList.toggle('btn-active', v.loop);
-            toast(v.loop ? "整段视频循环开启" : "整段视频循环关闭");
+            toast(v.loop ? "全视频循环：开启" : "全视频循环：关闭");
         }
 
         // --- 2. 音量与倍速逻辑 ---
@@ -175,6 +199,7 @@
         // --- 3. 字幕与精听逻辑 ---
         function onSubClick(i) {
             initAudioContext();
+            requestWakeLock();
             if (isSingleLoop) lockedIdx = i;
             v.currentTime = subs[i].start;
             v.play();
@@ -182,14 +207,7 @@
 
         v.ontimeupdate = () => {
             if (v.duration) pb.style.width = (v.currentTime / v.duration) * 100 + '%';
-            
-            // A-B点优先级最高
-            if (pointA !== -1 && pointB !== -1 && v.currentTime >= pointB) { 
-                v.currentTime = pointA; 
-                return; 
-            }
-            
-            // 单句锁定模式
+            if (pointA !== -1 && pointB !== -1 && v.currentTime >= pointB) { v.currentTime = pointA; return; }
             if (isSingleLoop) {
                 if (lockedIdx === -1) lockedIdx = subs.findIndex(s => v.currentTime >= s.start && v.currentTime < s.end);
                 if (lockedIdx !== -1) {
@@ -199,8 +217,6 @@
                     return;
                 }
             }
-
-            // 普通高亮同步
             const i = subs.findIndex(s => v.currentTime >= s.start && v.currentTime < s.end);
             if (i !== -1 && i !== curIdx) updateHighlight(i);
         };
@@ -216,10 +232,10 @@
             isSingleLoop = !isSingleLoop; 
             this.classList.toggle('btn-active', isSingleLoop); 
             lockedIdx = isSingleLoop ? curIdx : -1;
-            toast(isSingleLoop ? "单句锁定: 开启" : "单句锁定: 关闭");
+            toast(isSingleLoop ? "单句锁定：开启" : "单句锁定：关闭");
         };
 
-        // --- 4. 查词逻辑 (V16.3 回归版算法) ---
+        // --- 4. 查词逻辑 ---
         async function fetchIPA(w) {
             const query = async (word) => {
                 try {
