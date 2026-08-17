@@ -8,7 +8,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="English Pro">
     
-    <title>ENGLISH PRO V16.5 </title>
+    <title>ENGLISH PRO V16.5</title>
     <style>
         :root { --p: #00d2ff; --bg: #000; --panel: #1a1d23; --text: #e0e0e0; --brd: #333; --grn: #00c853; --ylw: #ffd600; --red: #ff4757; }
         html, body { height: 100%; margin: 0; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); }
@@ -120,26 +120,16 @@
         const playBtn = document.getElementById('playBtn'), fullLoopBtn = document.getElementById('fullLoopBtn');
         let subs = [], curIdx = -1, pointA = -1, pointB = -1, isSingleLoop = false, lockedIdx = -1;
 
-        // --- 【新增】屏幕唤醒锁逻辑 (防止手机自动锁屏) ---
+        // --- 唤醒锁 ---
         let wakeLock = null;
         async function requestWakeLock() {
             if ('wakeLock' in navigator) {
-                try {
-                    wakeLock = await navigator.wakeLock.request('screen');
-                    console.log('Wake Lock is active');
-                } catch (err) {
-                    console.log(`${err.name}, ${err.message}`);
-                }
+                try { wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
             }
         }
-        function releaseWakeLock() {
-            if (wakeLock !== null) {
-                wakeLock.release();
-                wakeLock = null;
-            }
-        }
+        function releaseWakeLock() { if (wakeLock !== null) { wakeLock.release(); wakeLock = null; } }
 
-        // --- 1. 播放与全视频循环控制 ---
+        // --- 核心播放逻辑 ---
         let audioCtx, gainNode, source;
         function initAudioContext() {
             if (!audioCtx) {
@@ -154,13 +144,7 @@
 
         function playPause() { 
             initAudioContext(); 
-            if (v.paused) {
-                v.play();
-                requestWakeLock(); // 播放时申请锁
-            } else {
-                v.pause();
-                releaseWakeLock(); // 暂停时释放锁
-            }
+            if (v.paused) { v.play(); requestWakeLock(); } else { v.pause(); releaseWakeLock(); }
         }
 
         v.onplay = () => { playBtn.innerText = "⏸ 暂停"; playBtn.classList.add('btn-active'); };
@@ -172,7 +156,6 @@
             toast(v.loop ? "全视频循环：开启" : "全视频循环：关闭");
         }
 
-        // --- 2. 音量与倍速逻辑 ---
         volSlider.oninput = (e) => {
             const val = e.target.value;
             if (gainNode) gainNode.gain.value = val;
@@ -196,7 +179,7 @@
             document.getElementById('spdText').innerText = v.playbackRate.toFixed(1) + 'x';
         }
 
-        // --- 3. 字幕与精听逻辑 ---
+        // --- 字幕精听 ---
         function onSubClick(i) {
             initAudioContext();
             requestWakeLock();
@@ -235,7 +218,7 @@
             toast(isSingleLoop ? "单句锁定：开启" : "单句锁定：关闭");
         };
 
-        // --- 4. 查词逻辑 ---
+        // --- 词典翻译 ---
         async function fetchIPA(w) {
             const query = async (word) => {
                 try {
@@ -273,7 +256,7 @@
                 });
         };
 
-        // --- 5. 文件与基础功能 ---
+        // --- 文件载入 ---
         function loadVideo(f) { v.src = URL.createObjectURL(f); document.getElementById('l-v').style.color= "var(--grn)"; toast("视频载入"); }
         function loadSubtitle(f) {
             const r = new FileReader(); r.onload = ev => {
@@ -308,6 +291,32 @@
         document.getElementById('vf').onchange = e => { if(e.target.files[0]) loadVideo(e.target.files[0]); };
         document.getElementById('sf').onchange = e => { if(e.target.files[0]) loadSubtitle(e.target.files[0]); };
         function handleGlobalDrop(e) { e.preventDefault(); const fs = e.dataTransfer.files; for(let f of fs) { if(f.type.startsWith('video/')) loadVideo(f); else if(f.name.match(/\.(srt|vtt|ass|ssa)$/i)) loadSubtitle(f); } }
+
+        // --- APP环境特有逻辑：安卓返回键处理 ---
+        document.addEventListener('plusready', function() {
+            // 只有在安卓环境下才执行
+            if (typeof plus !== 'undefined' && plus.os.name === 'Android') {
+                let lastButtonPress = 0;
+                plus.key.addEventListener('backbutton', function() {
+                    const pop = document.getElementById('word-pop');
+                    
+                    // 1. 如果查词弹窗开着，按返回键先关弹窗
+                    if (pop && pop.style.display === 'block') {
+                        pop.style.display = 'none';
+                        return;
+                    }
+
+                    // 2. 否则，判断两秒内连按两次退出
+                    let now = new Date().getTime();
+                    if (now - lastButtonPress < 2000) {
+                        plus.runtime.quit(); // 退出App
+                    } else {
+                        lastButtonPress = now;
+                        plus.nativeUI.toast('再按一次退出应用');
+                    }
+                }, false);
+            }
+        });
     </script>
 </body>
 </html>
