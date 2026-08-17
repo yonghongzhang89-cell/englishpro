@@ -1,322 +1,187 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="English Pro">
-    
-    <title>ENGLISH PRO V16.5</title>
-    <style>
-        :root { --p: #00d2ff; --bg: #000; --panel: #1a1d23; --text: #e0e0e0; --brd: #333; --grn: #00c853; --ylw: #ffd600; --red: #ff4757; }
-        html, body { height: 100%; margin: 0; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); }
+import os
+import threading
+import datetime
+import hashlib
+import time
+import sys
+import re
+import json
+import tkinter as tk
+from tkinter import filedialog, messagebox, ttk
+
+# --- 核心保障：适配 MoviePy ---
+try:
+    import whisper
+    from tkinterdnd2 import DND_FILES, TkinterDnD
+    try:
+        from moviepy import VideoFileClip, concatenate_videoclips
+    except ImportError:
+        from moviepy.editor import VideoFileClip, concatenate_videoclips
+except ImportError as e:
+    root = tk.Tk(); root.withdraw(); messagebox.showerror("缺失组件", str(e)); sys.exit()
+
+def resource_path(relative_path):
+    if hasattr(sys, '_MEIPASS'): return os.path.join(sys._MEIPASS, relative_path)
+    base_path = os.path.dirname(os.path.abspath(sys.argv[0]))
+    return os.path.join(base_path, relative_path)
+
+class VideoToolApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("ENGLISH PRO v7.8 (手机全循/防熄屏版)")
+        self.config_file = "config.json"
+        self.all_files_data = [] 
+        self.model = None
+        self.start_time = 0
+        self.is_running = False
+
+        self.build_ui()
+        self.load_config()
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        self.fix_environment()
+
+    def build_ui(self):
+        # 1. 顶部按钮区
+        top_frame = tk.Frame(self.root); top_frame.pack(pady=10, fill=tk.X, padx=20)
+        tk.Button(top_frame, text="➕ 导入视频", command=self.add_files, bg="#2196F3", fg="white", padx=12, font=("微软雅黑", 9, "bold")).pack(side=tk.LEFT, padx=3)
+        tk.Button(top_frame, text="👁️ 预览选中", command=self.preview_selected, bg="#607D8B", fg="white", padx=10).pack(side=tk.LEFT, padx=3)
+        tk.Button(top_frame, text="❌ 移除选中", command=self.remove_selected, bg="#f44336", fg="white", padx=10).pack(side=tk.LEFT, padx=3)
+        self.btn_dedup = tk.Button(top_frame, text="🛡️ 智能识别重复原片并清理", command=self.manual_dedup, bg="#2e7d32", fg="white", padx=15, font=("微软雅黑", 9, "bold"))
+        self.btn_dedup.pack(side=tk.LEFT, padx=10)
+        tk.Button(top_frame, text="清空", command=self.clear_list).pack(side=tk.RIGHT, padx=5)
+
+        # 2. 列表区 (保留 6 行美观高度)
+        list_frame = tk.Frame(self.root); list_frame.pack(pady=2, fill=tk.BOTH, padx=20, expand=True)
+        self.tree = ttk.Treeview(list_frame, columns=("name", "size", "path"), show="headings", selectmode="extended", height=6)
+        self.tree.heading("name", text="文件名"); self.tree.heading("size", text="大小"); self.tree.heading("path", text="完整路径")
+        self.tree.column("name", width=300); self.tree.column("size", width=100, anchor="center"); self.tree.column("path", width=500)
+        sc_y = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.tree.yview); self.tree.configure(yscroll=sc_y.set)
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True); sc_y.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.counter_label = tk.Label(self.root, text="就绪：待处理 0 个视频", font=("微软雅黑", 10)); self.counter_label.pack(pady=2)
+
+        # 3. 处理选项
+        settings_frame = tk.LabelFrame(self.root, text=" 手机/循环优化选项 "); settings_frame.pack(pady=5, fill=tk.X, padx=20)
+        tk.Label(settings_frame, text="格式:").grid(row=0, column=0, padx=10, pady=10)
+        self.video_ext = ttk.Combobox(settings_frame, values=[".mp4"], width=8, state="readonly"); self.video_ext.set(".mp4"); self.video_ext.grid(row=0, column=1)
+        tk.Label(settings_frame, text="字幕:").grid(row=0, column=2, padx=20)
+        self.text_ext = ttk.Combobox(settings_frame, values=["SRT (推荐)"], width=12, state="readonly"); self.text_ext.set("SRT (推荐)"); self.text_ext.grid(row=0, column=3)
+
+        # 4. 开始按钮
+        self.btn_start = tk.Button(self.root, text="🔥 开始生成全循/常亮手机视频", command=self.start_thread, bg="#4CAF50", fg="white", height=2, font=("微软雅黑", 12, "bold"), state=tk.DISABLED)
+        self.btn_start.pack(pady=8, fill=tk.X, padx=20)
         
-        #app { display: flex; height: 100vh; flex-direction: column; padding-top: env(safe-area-inset-top); }
+        self.timer_label = tk.Label(self.root, text="运行时间: 00:00:00", font=("Consolas", 11)); self.timer_label.pack()
+        self.status_label = tk.Label(self.root, text="准备就绪", fg="blue"); self.status_label.pack(pady=2)
+        self.progress = ttk.Progressbar(self.root, mode='determinate', maximum=100); self.progress.pack(pady=2, fill=tk.X, padx=20)
         
-        header { 
-            height: 50px; padding: 0 12px; background: #14171c; border-bottom: 1px solid var(--brd); 
-            display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; z-index: 100;
-        }
-        .f-btn { border: 1px solid #444; padding: 5px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; background: #252830; color: #ccc; margin-left: 4px; white-space: nowrap; }
+        # 底部红字
+        self.mode_label = tk.Label(self.root, text="工作模式：采用标准流写入，确保手机播放器单曲循环不中断、屏保不触发。", fg="#d32f2f", font=("微软雅黑", 9, "bold"))
+        self.mode_label.pack(pady=5)
 
-        main { flex: 1; display: flex; overflow: hidden; flex-direction: column; }
-        
-        #video-section { display: flex; flex-direction: column; background: #000; overflow: hidden; flex: none; height: 42vh; }
-        .video-container { flex: 1; position: relative; background: #000; display: flex; align-items: center; justify-content: center; min-height: 0; }
-        video { max-width: 100%; max-height: 100%; object-fit: contain; outline: none; }
+    def start_thread(self):
+        if not self.all_files_data: return
+        self.is_running = True; self.start_time = time.time(); self.update_timer()
+        self.btn_start.config(state=tk.DISABLED); threading.Thread(target=self.process_logic, daemon=True).start()
 
-        #pc { height: 6px; background: #222; cursor: pointer; position: relative; flex-shrink: 0; }
-        #pb { height: 100%; background: var(--p); width: 0%; position: absolute; pointer-events: none; }
+    def process_logic(self):
+        try:
+            paths = [item['path'] for item in self.all_files_data]
+            out_dir = os.path.dirname(paths[0]); target_v = os.path.join(out_dir, f"全循学习版_{int(time.time())}.mp4")
+            if not self.model: self.model = whisper.load_model("base")
+            
+            if len(paths) > 1:
+                self.set_progress(20, "🎬 正在极速合并 (标准流)...")
+                clips = [VideoFileClip(f) for f in paths]
+                # 获取原始帧率，这是同步的关键
+                fps = clips[0].fps or 24
+                # --- 核心回归：取消 resize 和复杂的 method，使用最稳的链式合并 ---
+                final = concatenate_videoclips(clips)
+                # 使用最基础的参数，保证手机系统能完美读取文件尾部
+                final.write_videofile(target_v, codec="libx264", audio_codec="aac", fps=fps, preset="ultrafast", logger=None)
+                for c in clips: c.close()
+                final.close()
+            else: target_v = paths[0]
 
-        #bar { padding: 8px; background: #14171c; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; flex-shrink: 0; }
-        .btn { padding: 12px 1px; border-radius: 4px; cursor: pointer; background: #2c313a; color: #fff; font-size: 13px; font-weight: bold; text-align: center; border: none; display: flex; align-items: center; justify-content: center; }
-        .btn-active { background: var(--p) !important; color: #000 !important; }
+            self.set_progress(60, "✍️ 正在生成同步字幕...")
+            res = self.model.transcribe(target_v, temperature=0, no_speech_threshold=0.4, condition_on_previous_text=False, fp16=False)
+            
+            srt_path = target_v.rsplit('.', 1)[0] + ".srt"
+            with open(srt_path, "w", encoding="utf-8") as f:
+                for idx, s in enumerate(res['segments']):
+                    if not s['text'].strip(): continue
+                    f.write(f"{idx+1}\n{self.fmt_t(s['start'])} --> {self.fmt_t(s['end'])}\n{s['text'].strip()}\n\n")
 
-        .spd-group { display: flex; background: #2c313a; border-radius: 4px; overflow: hidden; border: 1px solid #444; }
-        .spd-btn { flex: 1; background: transparent; color: #fff; border: none; font-size: 16px; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; }
-        #spdText { flex: 2; font-size: 11px; border-left: 1px solid #444; border-right: 1px solid #444; display: flex; align-items: center; justify-content: center; }
+            self.set_progress(100, "🎉 处理完成")
+            self.root.after(0, self.clear_list); messagebox.showinfo("成功", "已生成手机完美全循版视频！")
+        except Exception as e: messagebox.showerror("错误", str(e))
+        finally: self.is_running = False; self.root.after(0, lambda: self.btn_start.config(state=tk.NORMAL))
 
-        .vol-container { grid-column: span 4; display: flex; align-items: center; background: #1e222a; padding: 6px 12px; border-radius: 4px; }
-        #vol-slider { flex: 1; height: 4px; appearance: none; -webkit-appearance: none; background: #444; border-radius: 2px; outline: none; margin: 0 10px; }
-        #vol-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--p); border: 2px solid #fff; }
+    # --- 通用逻辑保持不变 ---
+    def fix_environment(self):
+        try:
+            ff_exe = resource_path("ffmpeg.exe")
+            if os.path.exists(ff_exe):
+                os.environ["IMAGEIO_FFMPEG_EXE"] = ff_exe
+                bin_dir = os.path.dirname(ff_exe)
+                if bin_dir not in os.environ["PATH"]: os.environ["PATH"] = bin_dir + os.pathsep + os.environ["PATH"]
+            self.status_label.config(text="✅ 手机全循格式已就绪。", fg="#2e7d32")
+            self.btn_start.config(state=tk.NORMAL)
+            self.root.drop_target_register(DND_FILES); self.root.dnd_bind('<<Drop>>', self.handle_drop)
+        except Exception as e: self.status_label.config(text=f"⚠️ 环境警告: {e}", fg="red")
+    def load_config(self):
+        try:
+            if os.path.exists(self.config_file):
+                with open(self.config_file, "r", encoding="utf-8") as f:
+                    cfg = json.load(f); self.root.geometry(cfg.get("geometry", "1000x720"))
+                    cols = cfg.get("column_widths", {})
+                    for col, width in cols.items(): self.tree.column(col, width=width)
+            else: self.root.geometry("1000x720")
+        except: self.root.geometry("1000x720")
+    def on_closing(self):
+        try:
+            cfg = {"geometry": self.root.geometry(), "column_widths": {"name": self.tree.column("name", "width"), "size": self.tree.column("size", "width"), "path": self.tree.column("path", "width")}}
+            with open(self.config_file, "w", encoding="utf-8") as f: json.dump(cfg, f, indent=4, ensure_ascii=False)
+        except: pass
+        self.root.destroy()
+    def set_progress(self, val, text):
+        self.root.after(0, lambda: self.progress.configure(value=val)); self.root.after(0, lambda: self.status_label.config(text=text))
+    def update_timer(self):
+        if self.is_running:
+            elapsed = int(time.time() - self.start_time); self.timer_label.config(text=f"运行时间: {str(datetime.timedelta(seconds=elapsed))}")
+            self.root.after(1000, self.update_timer)
+    def fmt_t(self, secs):
+        h, m, s = int(secs//3600), int((secs%3600)//60), int(secs%60); ms = int((secs%1)*1000)
+        return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+    def add_files(self): self.process_files(filedialog.askopenfilenames(filetypes=[("视频", "*.mp4 *.mov *.avi *.mkv")]))
+    def process_files(self, files):
+        for f in files:
+            f = f.strip().replace('"', '').replace("'", "")
+            if os.path.exists(f):
+                sz = os.path.getsize(f); self.all_files_data.append({'path': f, 'name': os.path.basename(f), 'size': f"{sz/(1024*1024):.2f} MB"})
+        self.refresh_tree()
+    def refresh_tree(self):
+        for i in self.tree.get_children(): self.tree.delete(i)
+        for item in self.all_files_data: self.tree.insert("", tk.END, values=(item['name'], item['size'], item['path']))
+    def handle_drop(self, event): self.process_files(re.findall(r'\{(.*?)\}', event.data) if '{' in event.data else event.data.split())
+    def preview_selected(self):
+        sel = self.tree.selection(); 
+        if sel: os.startfile(self.all_files_data[self.tree.index(sel[0])]['path'])
+    def remove_selected(self):
+        for i in sorted([self.tree.index(x) for x in self.tree.selection()], reverse=True): del self.all_files_data[i]
+        self.refresh_tree()
+    def clear_list(self): self.all_files_data = []; self.refresh_tree()
+    def manual_dedup(self):
+        seen = {}; to_keep = []; del_cnt = 0
+        for item in self.all_files_data:
+            sz = os.path.getsize(item['path'])
+            if sz in seen:
+                try: os.remove(item['path']); del_cnt += 1
+                except: pass
+            else: seen[sz] = True; to_keep.append(item)
+        self.all_files_data = to_keep; self.refresh_tree(); messagebox.showinfo("去重", f"已清理 {del_cnt} 个文件。")
 
-        #right { flex: 1; display: flex; flex-direction: column; background: var(--panel); overflow: hidden; border-top: 1px solid var(--brd); }
-        #subs { flex: 1; overflow-y: auto; padding: 12px; scroll-behavior: smooth; }
-        .line { padding: 12px; margin-bottom: 10px; border-radius: 8px; background: #21252b; border: 1px solid transparent; cursor: pointer; }
-        .active { background: #2c313a !important; border-color: var(--p) !important; }
-        .txt { font-size: 1.05rem; line-height: 1.5; color: #fff; pointer-events: none; }
-        .w { cursor: pointer; border-bottom: 1px dotted #555; pointer-events: auto; }
-        
-        @media screen and (orientation: landscape) {
-            main:not(.force-column) { flex-direction: row !important; }
-            main:not(.force-column) #video-section { flex: 6 !important; height: auto !important; border-right: 1px solid var(--brd); border-bottom: none; }
-            main:not(.force-column) #right { flex: 4 !important; border-top: none; }
-            main:not(.force-column) #bar { padding: 4px; gap: 4px; }
-            main:not(.force-column) .btn { padding: 8px 1px; font-size: 11px; }
-        }
-        .force-column { flex-direction: column !important; }
-
-        #word-pop { display: none; position: fixed; z-index: 9999; background: #2c313a; width: 85%; max-width: 300px; border-radius: 12px; padding: 15px; border: 2px solid #555; left: 50% !important; top: 50% !important; transform: translate(-50%, -50%); box-shadow: 0 10px 40px rgba(0,0,0,0.8); }
-        #toast { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.9); color:#fff; padding: 6px 15px; border-radius: 20px; display: none; z-index: 1001; font-size: 12px; border: 1px solid var(--p); }
-    </style>
-</head>
-<body ondragover="event.preventDefault()" ondrop="handleGlobalDrop(event)">
-    <div id="app">
-        <header id="h">
-            <h2 style="color:var(--p); margin:0; font-size: 15px;">PRO V16.5</h2>
-            <div style="display: flex; align-items: center;">
-                <label class="f-btn" id="l-v">🎬视频<input type="file" id="vf" hidden accept="video/*"></label>
-                <label class="f-btn" id="l-s">📝字幕<input type="file" id="sf" hidden accept=".srt,.vtt,.ass,.ssa"></label>
-                <div class="f-btn" onclick="toggleLayout()">📐布局</div>
-                <div class="f-btn" style="color:var(--red)" onclick="location.reload()">🗑️</div>
-            </div>
-        </header>
-        <main id="m">
-            <div id="video-section">
-                <div class="video-container"><video id="v" playsinline webkit-playsinline crossorigin="anonymous"></video></div>
-                <div id="pc" onclick="seek(event)"><div id="pb"></div></div>
-                <div id="bar">
-                    <button class="btn" id="playBtn" onclick="playPause()">▶ 播放</button>
-                    <button class="btn" id="loopBtn">🔄 单句</button>
-                    <button class="btn" id="fullLoopBtn" onclick="toggleFullLoop()">🔁 全循</button>
-                    <button class="btn" style="color:var(--red)" onclick="resetAB()">重置</button>
-                    
-                    <button class="btn" style="color:var(--ylw)" onclick="setA()">🚩 A点</button>
-                    <button class="btn" style="color:var(--ylw)" onclick="setB()">🏁 B点</button>
-                    
-                    <div class="spd-group">
-                        <button class="spd-btn" onclick="adjustSpd(-0.1)">-</button>
-                        <div id="spdText">1.0x</div>
-                        <button class="spd-btn" onclick="adjustSpd(0.1)">+</button>
-                    </div>
-                    
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px;">
-                        <button class="btn" style="padding:0" onclick="v.currentTime-=0.1">-0.1</button>
-                        <button class="btn" style="padding:0" onclick="v.currentTime+=0.1">+0.1</button>
-                    </div>
-
-                    <div class="vol-container">
-                        <span id="vol-ico" onclick="toggleMute()" style="cursor:pointer; width:20px;">🔊</span>
-                        <input type="range" id="vol-slider" min="0" max="1" step="0.05" value="1">
-                    </div>
-                </div>
-            </div>
-            <div id="right"><div id="subs"></div></div>
-        </main>
-    </div>
-
-    <div id="word-pop" onclick="this.style.display='none'">
-        <div id="p-head"><span id="p-word" style="font-size:20px;color:var(--p);font-weight:bold;"></span><span id="p-phonetic" style="color:var(--ylw); font-size:14px; margin-left:8px;"></span></div>
-        <div id="p-ex-box" style="margin-top:10px; font-weight:bold; color:#fff; line-height:1.4;">Searching...</div>
-    </div>
-    <div id="toast"></div>
-
-    <script>
-        const v = document.getElementById('v'), subA = document.getElementById('subs'), m = document.getElementById('m');
-        const pb = document.getElementById('pb'), pc = document.getElementById('pc');
-        const volSlider = document.getElementById('vol-slider'), volIco = document.getElementById('vol-ico');
-        const playBtn = document.getElementById('playBtn'), fullLoopBtn = document.getElementById('fullLoopBtn');
-        let subs = [], curIdx = -1, pointA = -1, pointB = -1, isSingleLoop = false, lockedIdx = -1;
-
-        // --- 唤醒锁 ---
-        let wakeLock = null;
-        async function requestWakeLock() {
-            if ('wakeLock' in navigator) {
-                try { wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
-            }
-        }
-        function releaseWakeLock() { if (wakeLock !== null) { wakeLock.release(); wakeLock = null; } }
-
-        // --- 核心播放逻辑 ---
-        let audioCtx, gainNode, source;
-        function initAudioContext() {
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                source = audioCtx.createMediaElementSource(v);
-                gainNode = audioCtx.createGain();
-                source.connect(gainNode);
-                gainNode.connect(audioCtx.destination);
-            }
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-        }
-
-        function playPause() { 
-            initAudioContext(); 
-            if (v.paused) { v.play(); requestWakeLock(); } else { v.pause(); releaseWakeLock(); }
-        }
-
-        v.onplay = () => { playBtn.innerText = "⏸ 暂停"; playBtn.classList.add('btn-active'); };
-        v.onpause = () => { playBtn.innerText = "▶ 播放"; playBtn.classList.remove('btn-active'); };
-
-        function toggleFullLoop() {
-            v.loop = !v.loop;
-            fullLoopBtn.classList.toggle('btn-active', v.loop);
-            toast(v.loop ? "全视频循环：开启" : "全视频循环：关闭");
-        }
-
-        volSlider.oninput = (e) => {
-            const val = e.target.value;
-            if (gainNode) gainNode.gain.value = val;
-            v.volume = val;
-            updateVolIcon(val);
-        };
-        function toggleMute() {
-            const target = volSlider.value > 0 ? 0 : 1;
-            volSlider.value = target;
-            if (gainNode) gainNode.gain.value = target;
-            v.volume = target;
-            updateVolIcon(target);
-        }
-        function updateVolIcon(val) { volIco.innerText = val == 0 ? "🔇" : val < 0.5 ? "🔉" : "🔊"; }
-        function toggleLayout() { m.classList.toggle('force-column'); toast("布局切换"); }
-        function adjustSpd(delta) {
-            let newRate = v.playbackRate + delta;
-            if (newRate < 0.5) newRate = 0.5;
-            if (newRate > 3.0) newRate = 3.0;
-            v.playbackRate = parseFloat(newRate.toFixed(1));
-            document.getElementById('spdText').innerText = v.playbackRate.toFixed(1) + 'x';
-        }
-
-        // --- 字幕精听 ---
-        function onSubClick(i) {
-            initAudioContext();
-            requestWakeLock();
-            if (isSingleLoop) lockedIdx = i;
-            v.currentTime = subs[i].start;
-            v.play();
-        }
-
-        v.ontimeupdate = () => {
-            if (v.duration) pb.style.width = (v.currentTime / v.duration) * 100 + '%';
-            if (pointA !== -1 && pointB !== -1 && v.currentTime >= pointB) { v.currentTime = pointA; return; }
-            if (isSingleLoop) {
-                if (lockedIdx === -1) lockedIdx = subs.findIndex(s => v.currentTime >= s.start && v.currentTime < s.end);
-                if (lockedIdx !== -1) {
-                    const s = subs[lockedIdx];
-                    if (v.currentTime >= s.end || v.currentTime < s.start - 0.5) v.currentTime = s.start;
-                    if (lockedIdx !== curIdx) updateHighlight(lockedIdx);
-                    return;
-                }
-            }
-            const i = subs.findIndex(s => v.currentTime >= s.start && v.currentTime < s.end);
-            if (i !== -1 && i !== curIdx) updateHighlight(i);
-        };
-
-        function updateHighlight(i) {
-            curIdx = i;
-            document.querySelector('.active')?.classList.remove('active');
-            const el = document.querySelector(`[data-i="${i}"]`);
-            if(el) { el.classList.add('active'); el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
-        }
-
-        document.getElementById('loopBtn').onclick = function() { 
-            isSingleLoop = !isSingleLoop; 
-            this.classList.toggle('btn-active', isSingleLoop); 
-            lockedIdx = isSingleLoop ? curIdx : -1;
-            toast(isSingleLoop ? "单句锁定：开启" : "单句锁定：关闭");
-        };
-
-        // --- 词典翻译 ---
-        async function fetchIPA(w) {
-            const query = async (word) => {
-                try {
-                    const r = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
-                    const d = await r.json();
-                    return d[0]?.phonetic || d[0]?.phonetics?.find(p => p.text)?.text || "";
-                } catch(e) { return ""; }
-            };
-            let res = await query(w);
-            if (res) return res;
-            let root = w.toLowerCase();
-            if (root.endsWith('s')) res = await query(root.replace(/s$/, ''));
-            if (!res && root.endsWith('ing')) {
-                res = await query(root.replace(/ing$/, ''));
-                if(!res) res = await query(root.replace(/ing$/, 'e'));
-            }
-            if (!res && root.endsWith('ed')) res = await query(root.replace(/ed$/, ''));
-            return res;
-        }
-
-        const word = async (e, w) => { 
-            e.stopPropagation(); 
-            const pop = document.getElementById('word-pop');
-            pop.style.display = 'block';
-            document.getElementById('p-word').innerText = w;
-            document.getElementById('p-phonetic').innerText = ''; 
-            document.getElementById('p-ex-box').innerText = 'Searching...';
-            const cleanW = w.toLowerCase().replace(/[^a-z]/g, '');
-            const phoneticPromise = fetchIPA(cleanW);
-            fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=zh-CN&dt=t&q=${encodeURIComponent(w)}`)
-                .then(r => r.json()).then(async data => { 
-                    document.getElementById('p-ex-box').innerText = data[0][0][0];
-                    const ph = await phoneticPromise;
-                    document.getElementById('p-phonetic').innerText = ph ? (ph.includes('/') ? ph : `/${ph}/`) : "";
-                });
-        };
-
-        // --- 文件载入 ---
-        function loadVideo(f) { v.src = URL.createObjectURL(f); document.getElementById('l-v').style.color= "var(--grn)"; toast("视频载入"); }
-        function loadSubtitle(f) {
-            const r = new FileReader(); r.onload = ev => {
-                subs = parseContent(new TextDecoder('utf-8').decode(ev.target.result));
-                if(subs.length) { render(); document.getElementById('l-s').style.color= "var(--grn)"; toast("字幕载入"); }
-            }; r.readAsArrayBuffer(f);
-        }
-        const parseContent = (t) => {
-            const res = []; let id = 0;
-            t.trim().split(/\n\s*\n/).forEach(b => {
-                const l = b.split('\n'), ti = l.find(x => x.includes('-->'));
-                if (ti) {
-                    const ts = ti.split('-->'), toS = s => { const p = s.trim().replace(',','.').split(':'); return p.length===3 ? p[0]*3600+p[1]*60+parseFloat(p[2]) : 0; };
-                    res.push({ start: toS(ts[0]), end: toS(ts[1]), text: l.slice(l.indexOf(ti)+1).join(' ').replace(/<[^>]+>/g,''), idx: id++ });
-                }
-            });
-            return res;
-        };
-        const render = () => {
-            subA.innerHTML = subs.map(s => `
-                <div class="line" data-i="${s.idx}" onclick="onSubClick(${s.idx})">
-                    <div class="txt">${s.text.split(/([a-zA-Z']+)/g).map(p => p.match(/[a-zA-Z]/) ? `<span class="w" onclick="word(event,'${p}')">${p}</span>` : p).join('')}</div>
-                </div>
-            `).join('');
-        };
-        function setA() { pointA = v.currentTime; toast("A点已设"); }
-        function setB() { pointB = v.currentTime; v.currentTime = pointA; toast("循环开始"); }
-        function resetAB() { pointA = -1; pointB = -1; toast("已重置"); }
-        function seek(e) { if(v.duration) v.currentTime = (e.offsetX / pc.offsetWidth) * v.duration; }
-        const toast = m => { const t = document.getElementById('toast'); t.innerText = m; t.style.display = 'block'; setTimeout(()=>t.style.display='none',1500); };
-        window.addEventListener('pointerdown', (e) => { const pop = document.getElementById('word-pop'); if (pop.style.display === 'block' && !pop.contains(e.target)) pop.style.display = 'none'; });
-        document.getElementById('vf').onchange = e => { if(e.target.files[0]) loadVideo(e.target.files[0]); };
-        document.getElementById('sf').onchange = e => { if(e.target.files[0]) loadSubtitle(e.target.files[0]); };
-        function handleGlobalDrop(e) { e.preventDefault(); const fs = e.dataTransfer.files; for(let f of fs) { if(f.type.startsWith('video/')) loadVideo(f); else if(f.name.match(/\.(srt|vtt|ass|ssa)$/i)) loadSubtitle(f); } }
-
-        // --- APP环境特有逻辑：安卓返回键处理 ---
-        document.addEventListener('plusready', function() {
-            // 只有在安卓环境下才执行
-            if (typeof plus !== 'undefined' && plus.os.name === 'Android') {
-                let lastButtonPress = 0;
-                plus.key.addEventListener('backbutton', function() {
-                    const pop = document.getElementById('word-pop');
-                    
-                    // 1. 如果查词弹窗开着，按返回键先关弹窗
-                    if (pop && pop.style.display === 'block') {
-                        pop.style.display = 'none';
-                        return;
-                    }
-
-                    // 2. 否则，判断两秒内连按两次退出
-                    let now = new Date().getTime();
-                    if (now - lastButtonPress < 2000) {
-                        plus.runtime.quit(); // 退出App
-                    } else {
-                        lastButtonPress = now;
-                        plus.nativeUI.toast('再按一次退出应用');
-                    }
-                }, false);
-            }
-        });
-    </script>
-</body>
-</html>
+if __name__ == "__main__":
+    try: from tkinterdnd2 import TkinterDnD; root = TkinterDnD.Tk()
+    except: root = tk.Tk()
+    app = VideoToolApp(root); root.mainloop()
